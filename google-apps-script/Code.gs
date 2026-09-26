@@ -140,7 +140,13 @@ function handleSaveRecord(ss, payload) {
     reason
   } = payload;
 
+  const maxRows = sheet.getMaxRows();
   const lastRow = sheet.getLastRow();
+
+  // If 20 or fewer empty rows left, proactively add 500 rows to prevent appendRow expansion lag
+  if ((maxRows - lastRow) <= 20) {
+    sheet.insertRowsAfter(maxRows, 500);
+  }
 
   // Duplicate protection: Check recent 50 submissions in Column K (Column 11)
   if (lastRow >= 2 && submissionId) {
