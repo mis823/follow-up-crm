@@ -145,12 +145,14 @@ function handleSaveRecord(ss, payload) {
     reason
   } = payload;
 
-  const lastRow = sheet.getLastRow();
+  // 1. Find the REAL last filled row by inspecting Column B (Timestamp) & Column C (Mobile)
+  const lastFilledRow = getLastFilledRow(sheet);
+  const targetRow = lastFilledRow + 1;
 
-  // Duplicate protection: Check recent 50 submissions in Column K (Column 11)
-  if (lastRow >= 2 && submissionId) {
-    const startRow = Math.max(2, lastRow - 50);
-    const numRows = lastRow - startRow + 1;
+  // 2. Duplicate protection: Check recent 50 submissions in Column K around lastFilledRow
+  if (lastFilledRow >= 2 && submissionId) {
+    const startRow = Math.max(2, lastFilledRow - 50);
+    const numRows = lastFilledRow - startRow + 1;
     const recentSubmissions = sheet.getRange(startRow, 11, numRows, 1).getValues();
     for (let i = 0; i < recentSubmissions.length; i++) {
       if (String(recentSubmissions[i][0]).trim() === String(submissionId).trim()) {
@@ -170,43 +172,85 @@ function handleSaveRecord(ss, payload) {
     }
   }
 
-  // If Column A or Column E have formulas, read them once from previous row
-  let colAVal = '';
-  let colEVal = '';
-  if (lastRow >= 2) {
-    try {
-      const formulas = sheet.getRange(lastRow, 1, 1, 5).getFormulasR1C1()[0];
-      if (formulas && formulas[0]) colAVal = formulas[0];
-      if (formulas && formulas[4]) colEVal = formulas[4];
-    } catch (e) {}
-  }
-
-  // Pre-allocate 500 rows if sheet is running low on space (<= 20 rows left)
-  // This completely eliminates Google Sheets delay on auto-expanding rows
+  // 3. Pre-allocate 500 rows if sheet is running low on space (<= 20 rows left from targetRow)
   const maxRows = sheet.getMaxRows();
-  if (maxRows - lastRow <= 20) {
+  if (targetRow > maxRows) {
+    sheet.insertRowsAfter(maxRows, Math.max(500, targetRow - maxRows + 100));
+  } else if (maxRows - targetRow <= 20) {
     sheet.insertRowsAfter(maxRows, 500);
   }
 
-  // Single fast atomic appendRow
-  sheet.appendRow([
-    colAVal,            // Column A (formula)
-    timeFormatted,      // Column B: Timestamp (DD/MM/YYYY HH:mm:ss)
-    mobile || '',       // Column C: Mobile No.
-    name || '',         // Column D: Customer Name
-    colEVal,            // Column E (formula)
-    formattedFollowup,  // Column F: Follow-Up Date (DD/MM/YYYY)
-    rating || '',       // Column G: Rating
-    remark || '',       // Column H: Remark
-    anyIssues || 'No',                         // Column I: Any Issues
-    anyIssues === 'Yes' ? (reason || '') : '', // Column J: Reason
-    submissionId || ''                         // Column K: Submission ID
+  // 4. Ensure formulas exist in Column A and Column E for targetRow
+  if (targetRow >= 3) {
+    try {
+      const prevRow = targetRow - 1;
+      // Copy formula in Col A if targetRow cell doesn't already have one
+      const targetACell = sheet.getRange(targetRow, 1);
+      if (!targetACell.getFormula()) {
+        const prevACell = sheet.getRange(prevRow, 1);
+        if (prevACell.getFormula()) {
+          prevACell.copyTo(targetACell, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+        }
+      }
+
+      // Copy formula in Col E if targetRow cell doesn't already have one
+      const targetECell = sheet.getRange(targetRow, 5);
+      if (!targetECell.getFormula()) {
+        const prevECell = sheet.getRange(prevRow, 5);
+        if (prevECell.getFormula()) {
+          prevECell.copyTo(targetECell, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 5. Write data into the EXACT next filled row (targetRow)
+  // Column B to D: [Timestamp, Mobile, Name]
+  sheet.getRange(targetRow, 2, 1, 3).setValues([
+    [timeFormatted, mobile || '', name || '']
+  ]);
+
+  // Column F to K: [Follow-Up Date, Rating, Remark, Any Issues, Reason, Submission ID]
+  sheet.getRange(targetRow, 6, 1, 6).setValues([
+    [
+      formattedFollowup,
+      rating || '',
+      remark || '',
+      anyIssues || 'No',
+      anyIssues === 'Yes' ? (reason || '') : '',
+      submissionId || ''
+    ]
   ]);
 
   return jsonResponse({
     success: true,
-    message: 'Follow-up saved successfully'
+    message: 'Follow-up saved successfully',
+    row: targetRow
   });
+}
+
+/**
+ * Finds the actual last filled data row in Responses1
+ * Checks Column B (Timestamp) and Column C (Mobile) from bottom to top
+ */
+function getLastFilledRow(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return 1;
+
+  // Read Column B & C values up to lastRow
+  const colBC = sheet.getRange(1, 2, lastRow, 2).getValues();
+
+  // Scan backwards from bottom to top to find the first non-empty cell in Col B or Col C
+  for (let r = colBC.length - 1; r >= 1; r--) {
+    const b = colBC[r][0];
+    const c = colBC[r][1];
+    if ((b !== '' && b !== null && b !== undefined) ||
+        (c !== '' && c !== null && c !== undefined)) {
+      return r + 1; // 1-indexed row number
+    }
+  }
+
+  return 1; // If only header row has content
 }
 
 /**
@@ -219,8 +263,8 @@ function handleCheckAndAddRows(ss) {
   }
 
   const maxRows = sheet.getMaxRows();
-  const lastRow = sheet.getLastRow();
-  const emptyRowsLeft = maxRows - lastRow;
+  const lastFilledRow = getLastFilledRow(sheet);
+  const emptyRowsLeft = maxRows - lastFilledRow;
   let added = false;
 
   if (emptyRowsLeft <= 20) {
@@ -231,8 +275,9 @@ function handleCheckAndAddRows(ss) {
   return jsonResponse({
     success: true,
     added500Rows: added,
+    lastFilledRow: lastFilledRow,
     totalRows: sheet.getMaxRows(),
-    emptyRowsLeft: sheet.getMaxRows() - sheet.getLastRow()
+    emptyRowsLeft: sheet.getMaxRows() - lastFilledRow
   });
 }
 
@@ -247,7 +292,7 @@ function onOpen() {
 }
 
 /**
- * Checks Column B of Responses1 and adds 500 rows if 20 or fewer rows remain.
+ * Checks Responses1 and adds 500 rows if 20 or fewer rows remain after last filled row.
  * Runs instantly from the "CRM Tools" menu inside your Google Spreadsheet.
  */
 function checkAndAdd500Rows() {
@@ -259,22 +304,23 @@ function checkAndAdd500Rows() {
   }
 
   const maxRows = sheet.getMaxRows();
-  const lastRow = sheet.getLastRow();
-  const emptyRowsLeft = maxRows - lastRow;
+  const lastFilledRow = getLastFilledRow(sheet);
+  const emptyRowsLeft = maxRows - lastFilledRow;
 
   if (emptyRowsLeft <= 20) {
     sheet.insertRowsAfter(maxRows, 500);
     SpreadsheetApp.getUi().alert(
       '✅ Added 500 new rows to Responses1!\n\n' +
+      'Last filled row (Col B): ' + lastFilledRow + '\n' +
       'Previous total rows: ' + maxRows + '\n' +
       'New total rows: ' + sheet.getMaxRows() + '\n' +
-      'Empty rows available: ' + (sheet.getMaxRows() - lastRow)
+      'Empty rows available: ' + (sheet.getMaxRows() - lastFilledRow)
     );
   } else {
     SpreadsheetApp.getUi().alert(
       'ℹ️ Sufficient rows available!\n\n' +
+      'Last filled row (Col B): ' + lastFilledRow + '\n' +
       'Total rows in sheet: ' + maxRows + '\n' +
-      'Last row with data: ' + lastRow + '\n' +
       'Empty rows remaining: ' + emptyRowsLeft + '\n\n' +
       'No extra rows needed right now (buffer threshold is 20 rows).'
     );
