@@ -1,17 +1,61 @@
+const https = require('https');
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const { google } = require('googleapis');
 const config = require('./config');
+
+const diskCacheFile = path.join(__dirname, '..', 'master_cache.json');
 
 // In-memory Master data store
 let masterCustomers = [];
 let prefixIndex = new Map(); // Map: 5-digit prefix -> Array of customer objects
 let lastCacheTime = 0;
-let isLoadingMaster = false;
+let masterLoadingPromise = null;
 
 // Processed submission IDs for fast duplicate protection
 const processedSubmissions = new Set();
 
 // Google Sheets API client instance
 let sheetsClient = null;
+
+/**
+ * Robust HTTP/HTTPS GET that follows 302 redirects and has no arbitrary timeout
+ */
+function httpsGetJson(url, maxRedirects = 5) {
+  return new Promise((resolve, reject) => {
+    if (maxRedirects < 0) return reject(new Error('Too many redirects'));
+
+    const client = url.startsWith('https') ? https : http;
+    const req = client.get(url, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return resolve(httpsGetJson(res.headers.location, maxRedirects - 1));
+      }
+
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        return reject(new Error(`HTTP status ${res.statusCode}`));
+      }
+
+      let data = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve(json);
+        } catch (err) {
+          reject(new Error('Invalid JSON received: ' + err.message));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.setTimeout(60000, () => {
+      req.destroy();
+      reject(new Error('Request timed out after 60s'));
+    });
+  });
+}
 
 // Mock master data used when real credentials are not yet configured in .env
 const MOCK_CUSTOMERS = [
@@ -29,6 +73,28 @@ const MOCK_CUSTOMERS = [
   { mobile: '9123498765', name: 'Meera Nambiar', rating: '5', remark: 'Referred by another client' },
   { mobile: '9988776655', name: 'Rahul Deshmukh', rating: '1', remark: 'Past issue with billing statement' }
 ];
+
+// Load disk cache immediately on module load if available
+try {
+  if (fs.existsSync(diskCacheFile)) {
+    const cached = JSON.parse(fs.readFileSync(diskCacheFile, 'utf8'));
+    if (Array.isArray(cached) && cached.length > 0) {
+      masterCustomers = cached;
+      lastCacheTime = Date.now();
+      for (let i = 0; i < cached.length; i++) {
+        const c = cached[i];
+        if (c.mobile && c.mobile.length >= 5) {
+          const p = c.mobile.substring(0, 5);
+          if (!prefixIndex.has(p)) prefixIndex.set(p, []);
+          prefixIndex.get(p).push(c);
+        }
+      }
+      console.log(`⚡ [Master Cache] Instant loaded ${cached.length} customers from disk cache.`);
+    }
+  }
+} catch (e) {
+  console.warn('Could not read disk cache:', e.message);
+}
 
 /**
  * Initialize Google Sheets API client or Webhook Bridge
@@ -83,8 +149,6 @@ function rebuildIndex(customers) {
   }
 }
 
-let masterLoadingPromise = null;
-
 /**
  * Load customer Master data from Google Sheets into memory/index
  * Supports starting from Row 7 as specified in business logic.
@@ -109,24 +173,11 @@ async function loadMasterData(forceRefresh = false) {
       if (config.isAppsScriptConfigured) {
         console.log(`🔄 [Master Cache] Fetching Master sheet via Apps Script Webhook...`);
         const fetchUrl = `${config.appsScriptUrl}?action=getMaster&_t=${Date.now()}`;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 60000);
-
-        try {
-          const response = await fetch(fetchUrl, { redirect: 'follow', signal: controller.signal });
-          clearTimeout(timeout);
-          if (!response.ok) {
-            throw new Error(`Webhook returned status ${response.status}`);
-          }
-          const json = await response.json();
-          if (!json.success) {
-            throw new Error(json.error || 'Failed to fetch Master data from Webhook');
-          }
-          rows = json.data || [];
-        } catch (fetchErr) {
-          clearTimeout(timeout);
-          throw fetchErr;
+        const json = await httpsGetJson(fetchUrl);
+        if (!json.success) {
+          throw new Error(json.error || 'Failed to fetch Master data from Webhook');
         }
+        rows = json.data || [];
       }
       // Mode 2: Google Cloud Service Account API
       else if (config.isGoogleCloudConfigured && sheetsClient) {
@@ -209,13 +260,15 @@ async function loadMasterData(forceRefresh = false) {
 
     rebuildIndex(parsedCustomers);
     lastCacheTime = Date.now();
+    try {
+      fs.writeFileSync(diskCacheFile, JSON.stringify(parsedCustomers));
+    } catch (e) {}
     const duration = Date.now() - startTime;
     console.log(`✅ [Master Cache] Successfully indexed ${parsedCustomers.length} customers from Master sheet in ${duration}ms.`);
     return masterCustomers;
   } catch (err) {
     console.error(`❌ [Master Cache] Failed to load Master sheet:`, err.message);
     if (masterCustomers.length === 0) {
-      // Fallback to mock data so system continues operating
       rebuildIndex(MOCK_CUSTOMERS);
     }
     } finally {
@@ -249,20 +302,18 @@ async function searchCustomers(query) {
 
   // 1. If query contains 3+ digits, search by mobile
   if (digitQuery.length >= 3) {
-    // Check prefix index if 5+ digits
-    if (digitQuery.length >= 5) {
-      const prefix5 = digitQuery.substring(0, 5);
-      const candidates = prefixIndex.get(prefix5) || [];
-      for (let i = 0; i < candidates.length; i++) {
-        const cust = candidates[i];
-        if (cust.mobile.includes(digitQuery)) {
+    // A. Priority: mobile starts with digitQuery
+    for (let i = 0; i < masterCustomers.length; i++) {
+      const cust = masterCustomers[i];
+      if (cust.mobile && cust.mobile.startsWith(digitQuery)) {
+        if (!results.includes(cust)) {
           results.push(cust);
           if (results.length >= maxResults) return results;
         }
       }
     }
 
-    // Search across all customers by mobile number
+    // B. Substring: mobile contains digitQuery
     for (let i = 0; i < masterCustomers.length; i++) {
       const cust = masterCustomers[i];
       if (cust.mobile && cust.mobile.includes(digitQuery)) {
