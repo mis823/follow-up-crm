@@ -83,6 +83,8 @@ function rebuildIndex(customers) {
   }
 }
 
+let masterLoadingPromise = null;
+
 /**
  * Load customer Master data from Google Sheets into memory/index
  * Supports starting from Row 7 as specified in business logic.
@@ -93,51 +95,65 @@ async function loadMasterData(forceRefresh = false) {
     return masterCustomers;
   }
 
-  if (isLoadingMaster) {
-    return masterCustomers;
+  if (masterLoadingPromise) {
+    return masterLoadingPromise;
   }
 
-  isLoadingMaster = true;
-  const startTime = Date.now();
+  masterLoadingPromise = (async () => {
+    const startTime = Date.now();
 
-  try {
-    let rows = [];
+    try {
+      let rows = [];
 
-    // Mode 1: Google Apps Script Webhook
-    if (config.isAppsScriptConfigured) {
-      console.log(`🔄 [Master Cache] Fetching Master sheet via Apps Script Webhook...`);
-      const fetchUrl = `${config.appsScriptUrl}?action=getMaster&_t=${Date.now()}`;
-      const response = await fetch(fetchUrl, { redirect: 'follow' });
-      if (!response.ok) {
-        throw new Error(`Webhook returned status ${response.status}`);
+      // Mode 1: Google Apps Script Webhook
+      if (config.isAppsScriptConfigured) {
+        console.log(`🔄 [Master Cache] Fetching Master sheet via Apps Script Webhook...`);
+        const fetchUrl = `${config.appsScriptUrl}?action=getMaster&_t=${Date.now()}`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 25000);
+
+        try {
+          const response = await fetch(fetchUrl, { redirect: 'follow', signal: controller.signal });
+          clearTimeout(timeout);
+          if (!response.ok) {
+            throw new Error(`Webhook returned status ${response.status}`);
+          }
+          const json = await response.json();
+          if (!json.success) {
+            throw new Error(json.error || 'Failed to fetch Master data from Webhook');
+          }
+          rows = json.data || [];
+        } catch (fetchErr) {
+          clearTimeout(timeout);
+          throw fetchErr;
+        }
       }
-      const json = await response.json();
-      if (!json.success) {
-        throw new Error(json.error || 'Failed to fetch Master data from Webhook');
-      }
-      rows = json.data || [];
-    }
-    // Mode 2: Google Cloud Service Account API
-    else if (config.isGoogleCloudConfigured && sheetsClient) {
-      console.log(`🔄 [Master Cache] Fetching Master sheet starting from row ${config.masterStartRow}...`);
-      const headerRow = Math.max(1, config.masterStartRow - 1);
-      const range = `${config.masterSheetName}!A${headerRow}:Z`;
+      // Mode 2: Google Cloud Service Account API
+      else if (config.isGoogleCloudConfigured && sheetsClient) {
+        console.log(`🔄 [Master Cache] Fetching Master sheet starting from row ${config.masterStartRow}...`);
+        const headerRow = Math.max(1, config.masterStartRow - 1);
+        const range = `${config.masterSheetName}!A${headerRow}:Z`;
 
-      const response = await sheetsClient.spreadsheets.values.get({
-        spreadsheetId: config.spreadsheetId,
-        range
-      });
-      rows = response.data.values || [];
-    }
-    // Mode 3: Demo / Mock Mode
-    else {
-      rebuildIndex(MOCK_CUSTOMERS);
-      lastCacheTime = Date.now();
-      console.log(`ℹ️ [Master Cache] Loaded ${MOCK_CUSTOMERS.length} demo customer records into memory index.`);
-      return masterCustomers;
-    }
-    if (rows.length === 0) {
-      console.warn(`⚠️ [Master Cache] No data found in ${config.masterSheetName} range ${range}`);
+        const response = await sheetsClient.spreadsheets.values.get({
+          spreadsheetId: config.spreadsheetId,
+          range
+        });
+        rows = response.data.values || [];
+      }
+      // Mode 3: Demo / Mock Mode
+      else {
+        rebuildIndex(MOCK_CUSTOMERS);
+        lastCacheTime = Date.now();
+        console.log(`ℹ️ [Master Cache] Loaded ${MOCK_CUSTOMERS.length} demo customer records into memory index.`);
+        return masterCustomers;
+      }
+
+      if (rows.length === 0) {
+        console.warn(`⚠️ [Master Cache] No data returned for Master sheet.`);
+        rebuildIndex([]);
+        lastCacheTime = Date.now();
+        return [];
+      }
       rebuildIndex([]);
       lastCacheTime = Date.now();
       return [];
@@ -206,10 +222,12 @@ async function loadMasterData(forceRefresh = false) {
       // Fallback to mock data so system continues operating
       rebuildIndex(MOCK_CUSTOMERS);
     }
-    return masterCustomers;
-  } finally {
-    isLoadingMaster = false;
-  }
+    } finally {
+      masterLoadingPromise = null;
+    }
+  })();
+
+  return masterLoadingPromise;
 }
 
 /**

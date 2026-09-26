@@ -34,8 +34,9 @@ function doGet(e) {
         return jsonResponse({ success: true, data: [] });
       }
 
-      // Read from Row 6 (header) down to last row
-      const data = sheet.getRange(6, 1, lastRow - 5, lastCol).getValues();
+      // Read only the required 6 columns (Indent, Mobile, Name, Mobile, Rating, Remark)
+      const numCols = Math.min(lastCol, 6);
+      const data = sheet.getRange(6, 1, lastRow - 5, numCols).getValues();
       return jsonResponse({ success: true, data: data });
     }
 
