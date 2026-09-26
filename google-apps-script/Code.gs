@@ -18,32 +18,30 @@
 function doGet(e) {
   try {
     const params = e && e.parameter ? e.parameter : {};
-    const action = params.action || 'getMaster';
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const action = params.action; // DO NOT default to getMaster!
 
-    // 1. Fetch Master Data for in-memory caching
-    if (action === 'getMaster') {
-      const sheet = ss.getSheetByName('Master') || ss.getSheets()[0];
-      if (!sheet) {
-        return jsonResponse({ success: false, error: 'Master sheet not found' });
-      }
-
-      const lastRow = sheet.getLastRow();
-      const lastCol = sheet.getLastColumn();
-      if (lastRow < 6 || lastCol < 1) {
-        return jsonResponse({ success: true, data: [] });
-      }
-
-      // Read only the required 6 columns (Indent, Mobile, Name, Mobile, Rating, Remark)
-      const numCols = Math.min(lastCol, 6);
-      const data = sheet.getRange(6, 1, lastRow - 5, numCols).getValues();
-      return jsonResponse({ success: true, data: data });
+    // 1. Instant Ping / Health Check (< 0.5s)
+    // When visiting the Web App URL in a browser or pinging status
+    if (!action || action === 'ping' || action === 'status') {
+      return jsonResponse({
+        success: true,
+        status: 'online',
+        message: 'Follow-Up CRM Webhook Bridge is running smoothly.',
+        time: Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd/MM/yyyy HH:mm:ss')
+      });
     }
 
-    // 2. Save Follow-Up via GET (handles HTTP redirects seamlessly)
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // 2. Save Follow-Up via GET (fastest, atomic append ~2-3s)
     if (action === 'save') {
       const payload = params.data ? JSON.parse(params.data) : params;
       return handleSaveRecord(ss, payload);
+    }
+
+    // 3. Fetch Master Data for in-memory caching (with CacheService acceleration)
+    if (action === 'getMaster') {
+      return handleGetMaster(ss, params.forceRefresh === 'true');
     }
 
     return jsonResponse({ success: false, error: 'Unknown action: ' + action });
@@ -70,6 +68,58 @@ function doPost(e) {
   } catch (err) {
     return jsonResponse({ success: false, error: err.toString() });
   }
+}
+
+/**
+ * Optimized Master Data fetcher with CacheService & blank row filtering
+ */
+function handleGetMaster(ss, forceRefresh) {
+  const cache = CacheService.getScriptCache();
+  if (!forceRefresh) {
+    const cached = cache.get('master_data_json');
+    if (cached) {
+      return ContentService.createTextOutput(cached)
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  const sheet = ss.getSheetByName('Master') || ss.getSheets()[0];
+  if (!sheet) {
+    return jsonResponse({ success: false, error: 'Master sheet not found' });
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 6) {
+    return jsonResponse({ success: true, data: [] });
+  }
+
+  // Read only the required 6 columns (starts from row 6: Header row)
+  const numCols = Math.min(sheet.getLastColumn(), 6);
+  const rawData = sheet.getRange(6, 1, lastRow - 5, numCols).getValues();
+
+  // Filter out completely blank rows so the payload is tiny and fast
+  const compactData = [];
+  compactData.push(rawData[0]); // Header row
+
+  for (let i = 1; i < rawData.length; i++) {
+    const row = rawData[i];
+    // Keep row only if mobile or name has content
+    if ((row[1] && String(row[1]).trim()) || (row[2] && String(row[2]).trim())) {
+      compactData.push(row);
+    }
+  }
+
+  const responseJson = JSON.stringify({ success: true, data: compactData });
+
+  // Store in Apps Script cache for 6 hours (21600 seconds) if under 100KB
+  try {
+    if (responseJson.length < 100000) {
+      cache.put('master_data_json', responseJson, 21600);
+    }
+  } catch (e) {}
+
+  return ContentService.createTextOutput(responseJson)
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function handleSaveRecord(ss, payload) {
