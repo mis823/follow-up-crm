@@ -89,12 +89,13 @@ function handleSaveRecord(ss, payload) {
     reason
   } = payload;
 
-  // Duplicate protection: Check recent 50 submissions
   const lastRow = sheet.getLastRow();
+
+  // Duplicate protection: Check recent 50 submissions in Column K (Column 11)
   if (lastRow >= 2 && submissionId) {
     const startRow = Math.max(2, lastRow - 50);
     const numRows = lastRow - startRow + 1;
-    const recentSubmissions = sheet.getRange(startRow, 9, numRows, 1).getValues();
+    const recentSubmissions = sheet.getRange(startRow, 11, numRows, 1).getValues();
     for (let i = 0; i < recentSubmissions.length; i++) {
       if (String(recentSubmissions[i][0]).trim() === String(submissionId).trim()) {
         return jsonResponse({ success: true, message: 'Already saved', alreadySaved: true });
@@ -102,22 +103,38 @@ function handleSaveRecord(ss, payload) {
     }
   }
 
-  // Current timestamp formatted for India/Asia
+  const newRow = lastRow + 1;
   const timeFormatted = timestamp || Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd/MM/yyyy HH:mm:ss');
 
-  // Append new follow-up row in Responses1
-  // Columns: [Timestamp, Mobile, Name, Follow-Up Date, Rating, Remark, Any Issues, Reason, Submission ID]
-  sheet.appendRow([
+  // Column B: Timestamp, Column C: Mobile No., Column D: Customer Name
+  sheet.getRange(newRow, 2, 1, 3).setValues([[
     timeFormatted,
     mobile || '',
-    name || '',
+    name || ''
+  ]]);
+
+  // Column F: Follow-Up Date, Column G: Rating, Column H: Remark, Column I: Any Issues, Column J: Reason, Column K: Submission ID
+  sheet.getRange(newRow, 6, 1, 6).setValues([[
     followup || '',
     rating || '',
     remark || '',
     anyIssues || 'No',
     anyIssues === 'Yes' ? (reason || '') : '',
     submissionId || ''
-  ]);
+  ]]);
+
+  // If Column A (1) and Column E (5) have row formulas, copy them down to newRow
+  if (lastRow >= 2) {
+    const colAFormula = sheet.getRange(lastRow, 1).getFormulaR1C1();
+    if (colAFormula) {
+      sheet.getRange(newRow, 1).setFormulaR1C1(colAFormula);
+    }
+
+    const colEFormula = sheet.getRange(lastRow, 5).getFormulaR1C1();
+    if (colEFormula) {
+      sheet.getRange(newRow, 5).setFormulaR1C1(colEFormula);
+    }
+  }
 
   return jsonResponse({
     success: true,

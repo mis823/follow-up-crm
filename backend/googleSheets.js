@@ -350,17 +350,19 @@ async function appendFollowUp(payload) {
   const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
   // Responses1 Row structure:
-  // [Timestamp, Mobile, Customer Name, Follow-Up Date, Rating, Remark, Any Issues, Reason, Submission ID]
+  // [Col A: (formula), Col B: Timestamp, Col C: Mobile, Col D: Name, Col E: (formula), Col F: Follow-up, Col G: Rating, Col H: Remark, Col I: Any Issues, Col J: Reason, Col K: Submission ID]
   const rowValues = [
-    timestamp,
-    cleanMobile,
-    cleanName,
-    followup,
-    numRating,
-    cleanRemark,
-    normalizedAnyIssues,
-    normalizedAnyIssues === 'Yes' ? cleanReason : '',
-    submissionId || ''
+    '', // Col A (formula)
+    timestamp, // Col B
+    cleanMobile, // Col C
+    cleanName, // Col D
+    '', // Col E (formula)
+    followup, // Col F
+    numRating, // Col G
+    cleanRemark, // Col H
+    normalizedAnyIssues, // Col I
+    normalizedAnyIssues === 'Yes' ? cleanReason : '', // Col J
+    submissionId || '' // Col K
   ];
 
   if (config.isAppsScriptConfigured) {
