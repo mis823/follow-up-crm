@@ -44,6 +44,11 @@ function doGet(e) {
       return handleGetMaster(ss, params.forceRefresh === 'true');
     }
 
+    // 4. Check & Pre-allocate rows endpoint
+    if (action === 'checkAndAddRows') {
+      return handleCheckAndAddRows(ss);
+    }
+
     return jsonResponse({ success: false, error: 'Unknown action: ' + action });
   } catch (err) {
     return jsonResponse({ success: false, error: err.toString() });
@@ -140,13 +145,7 @@ function handleSaveRecord(ss, payload) {
     reason
   } = payload;
 
-  const maxRows = sheet.getMaxRows();
   const lastRow = sheet.getLastRow();
-
-  // If 20 or fewer empty rows left, proactively add 500 rows to prevent appendRow expansion lag
-  if ((maxRows - lastRow) <= 20) {
-    sheet.insertRowsAfter(maxRows, 500);
-  }
 
   // Duplicate protection: Check recent 50 submissions in Column K (Column 11)
   if (lastRow >= 2 && submissionId) {
@@ -182,6 +181,13 @@ function handleSaveRecord(ss, payload) {
     } catch (e) {}
   }
 
+  // Pre-allocate 500 rows if sheet is running low on space (<= 20 rows left)
+  // This completely eliminates Google Sheets delay on auto-expanding rows
+  const maxRows = sheet.getMaxRows();
+  if (maxRows - lastRow <= 20) {
+    sheet.insertRowsAfter(maxRows, 500);
+  }
+
   // Single fast atomic appendRow
   sheet.appendRow([
     colAVal,            // Column A (formula)
@@ -201,6 +207,78 @@ function handleSaveRecord(ss, payload) {
     success: true,
     message: 'Follow-up saved successfully'
   });
+}
+
+/**
+ * Endpoint helper to check and add rows
+ */
+function handleCheckAndAddRows(ss) {
+  const sheet = ss.getSheetByName('Responses1');
+  if (!sheet) {
+    return jsonResponse({ success: false, error: 'Responses1 sheet not found' });
+  }
+
+  const maxRows = sheet.getMaxRows();
+  const lastRow = sheet.getLastRow();
+  const emptyRowsLeft = maxRows - lastRow;
+  let added = false;
+
+  if (emptyRowsLeft <= 20) {
+    sheet.insertRowsAfter(maxRows, 500);
+    added = true;
+  }
+
+  return jsonResponse({
+    success: true,
+    added500Rows: added,
+    totalRows: sheet.getMaxRows(),
+    emptyRowsLeft: sheet.getMaxRows() - sheet.getLastRow()
+  });
+}
+
+/**
+ * Adds a custom menu in Google Sheets so you can check and add rows with 1 click
+ */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('CRM Tools')
+    .addItem('Check & Add 500 Rows to Responses1', 'checkAndAdd500Rows')
+    .addToUi();
+}
+
+/**
+ * Checks Column B of Responses1 and adds 500 rows if 20 or fewer rows remain.
+ * Runs instantly from the "CRM Tools" menu inside your Google Spreadsheet.
+ */
+function checkAndAdd500Rows() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Responses1');
+  if (!sheet) {
+    SpreadsheetApp.getUi().alert('Responses1 sheet not found!');
+    return;
+  }
+
+  const maxRows = sheet.getMaxRows();
+  const lastRow = sheet.getLastRow();
+  const emptyRowsLeft = maxRows - lastRow;
+
+  if (emptyRowsLeft <= 20) {
+    sheet.insertRowsAfter(maxRows, 500);
+    SpreadsheetApp.getUi().alert(
+      '✅ Added 500 new rows to Responses1!\n\n' +
+      'Previous total rows: ' + maxRows + '\n' +
+      'New total rows: ' + sheet.getMaxRows() + '\n' +
+      'Empty rows available: ' + (sheet.getMaxRows() - lastRow)
+    );
+  } else {
+    SpreadsheetApp.getUi().alert(
+      'ℹ️ Sufficient rows available!\n\n' +
+      'Total rows in sheet: ' + maxRows + '\n' +
+      'Last row with data: ' + lastRow + '\n' +
+      'Empty rows remaining: ' + emptyRowsLeft + '\n\n' +
+      'No extra rows needed right now (buffer threshold is 20 rows).'
+    );
+  }
 }
 
 function jsonResponse(data) {
