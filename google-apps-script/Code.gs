@@ -106,6 +106,15 @@ function handleSaveRecord(ss, payload) {
 
   const timeFormatted = timestamp || Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd/MM/yyyy HH:mm:ss');
 
+  // Format follow-up date as DD/MM/YYYY
+  let formattedFollowup = followup || '';
+  if (formattedFollowup && formattedFollowup.indexOf('-') > -1) {
+    const dParts = formattedFollowup.split('-');
+    if (dParts.length === 3) {
+      formattedFollowup = dParts[2] + '/' + dParts[1] + '/' + dParts[0];
+    }
+  }
+
   // If Column A or Column E have formulas, read them once from previous row
   let colAVal = '';
   let colEVal = '';
@@ -119,14 +128,14 @@ function handleSaveRecord(ss, payload) {
 
   // Single fast atomic appendRow
   sheet.appendRow([
-    colAVal,        // Column A (formula)
-    timeFormatted,  // Column B: Timestamp
-    mobile || '',   // Column C: Mobile No.
-    name || '',     // Column D: Customer Name
-    colEVal,        // Column E (formula)
-    followup || '', // Column F: Follow-Up Date
-    rating || '',   // Column G: Rating
-    remark || '',   // Column H: Remark
+    colAVal,            // Column A (formula)
+    timeFormatted,      // Column B: Timestamp (DD/MM/YYYY HH:mm:ss)
+    mobile || '',       // Column C: Mobile No.
+    name || '',         // Column D: Customer Name
+    colEVal,            // Column E (formula)
+    formattedFollowup,  // Column F: Follow-Up Date (DD/MM/YYYY)
+    rating || '',       // Column G: Rating
+    remark || '',       // Column H: Remark
     anyIssues || 'No',                         // Column I: Any Issues
     anyIssues === 'Yes' ? (reason || '') : '', // Column J: Reason
     submissionId || ''                         // Column K: Submission ID

@@ -429,10 +429,19 @@ document.addEventListener('DOMContentLoaded', () => {
       ? crypto.randomUUID()
       : 'sub_' + Date.now() + '_' + Math.random().toString(36).substring(2, 10);
 
+    // Format follow-up date as DD/MM/YYYY (e.g. 26/09/2026)
+    let formattedFollowup = followup;
+    if (followup && followup.includes('-')) {
+      const fParts = followup.split('-');
+      if (fParts.length === 3) {
+        formattedFollowup = `${fParts[2]}/${fParts[1]}/${fParts[0]}`;
+      }
+    }
+
     const payload = {
       mobile,
       name,
-      followup,
+      followup: formattedFollowup,
       rating: parseInt(rating, 10),
       remark,
       anyIssues,

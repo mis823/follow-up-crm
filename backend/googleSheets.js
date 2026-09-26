@@ -393,9 +393,25 @@ async function appendFollowUp(payload) {
   maxDate.setDate(maxDate.getDate() + 30);
   maxDate.setHours(23, 59, 59, 999);
 
-  const selectedDate = new Date(followup + 'T00:00:00');
-  if (isNaN(selectedDate.getTime())) {
-    const err = new Error('Invalid date format.');
+  // Validate and parse follow-up date (supports DD/MM/YYYY and YYYY-MM-DD)
+  let formattedFollowup = String(followup || '').trim();
+  let selectedDate;
+
+  if (formattedFollowup.includes('/')) {
+    const dParts = formattedFollowup.split('/');
+    if (dParts.length === 3) {
+      selectedDate = new Date(`${dParts[2]}-${dParts[1]}-${dParts[0]}T00:00:00`);
+    }
+  } else if (formattedFollowup.includes('-')) {
+    const dParts = formattedFollowup.split('-');
+    if (dParts.length === 3) {
+      selectedDate = new Date(`${dParts[0]}-${dParts[1]}-${dParts[2]}T00:00:00`);
+      formattedFollowup = `${dParts[2]}/${dParts[1]}/${dParts[0]}`;
+    }
+  }
+
+  if (!selectedDate || isNaN(selectedDate.getTime())) {
+    const err = new Error('Invalid date format. Expected DD/MM/YYYY.');
     err.status = 400;
     throw err;
   }
@@ -430,17 +446,35 @@ async function appendFollowUp(payload) {
   }
 
   const cleanRemark = String(remark || '').trim();
-  const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+  // Timestamp strictly formatted as DD/MM/YYYY HH:mm:ss
+  const now = new Date();
+  const istFormatter = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  const parts = istFormatter.formatToParts(now);
+  const p = {};
+  parts.forEach(({ type, value }) => { p[type] = value; });
+  let hour = p.hour || '00';
+  if (hour === '24') hour = '00';
+  const timestamp = `${p.day}/${p.month}/${p.year} ${hour}:${p.minute}:${p.second}`;
 
   // Responses1 Row structure:
   // [Col A: (formula), Col B: Timestamp, Col C: Mobile, Col D: Name, Col E: (formula), Col F: Follow-up, Col G: Rating, Col H: Remark, Col I: Any Issues, Col J: Reason, Col K: Submission ID]
   const rowValues = [
     '', // Col A (formula)
-    timestamp, // Col B
+    timestamp, // Col B: DD/MM/YYYY HH:mm:ss
     cleanMobile, // Col C
     cleanName, // Col D
     '', // Col E (formula)
-    followup, // Col F
+    formattedFollowup, // Col F: DD/MM/YYYY
     numRating, // Col G
     cleanRemark, // Col H
     normalizedAnyIssues, // Col I
@@ -455,7 +489,7 @@ async function appendFollowUp(payload) {
       submissionId: submissionId || '',
       mobile: cleanMobile,
       name: cleanName,
-      followup,
+      followup: formattedFollowup,
       rating: numRating,
       remark: cleanRemark,
       anyIssues: normalizedAnyIssues,
