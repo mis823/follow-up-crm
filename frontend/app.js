@@ -94,21 +94,19 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // -------------------------------------------------------------
-  // 3. Customer Autocomplete Search
+  // 3. Customer Autocomplete Search (Mobile or Name, min 3 chars)
   // -------------------------------------------------------------
   mobileInput.addEventListener('input', (e) => {
-    // Keep only numbers and max 10 digits
-    const cleanVal = e.target.value.replace(/\D/g, '').slice(0, 10);
-    e.target.value = cleanVal;
+    const query = e.target.value.trim();
 
-    // Reset customer selection state when user edits mobile
+    // Reset customer selection state when user edits search box
     nameInput.readOnly = false;
     previousRatingContainer.classList.add('d-none');
     previousRemarkContainer.classList.add('d-none');
 
     clearTimeout(searchDebounceTimer);
 
-    if (cleanVal.length < 5) {
+    if (query.length < 3) {
       hideSuggestions();
       searchSpinner.classList.add('d-none');
       if (activeAbortController) {
@@ -120,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Debounce search ~150ms
     searchSpinner.classList.remove('d-none');
     searchDebounceTimer = setTimeout(() => {
-      performCustomerSearch(cleanVal);
+      performCustomerSearch(query);
     }, 150);
   });
 
@@ -370,8 +368,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let isValid = true;
 
     // Mobile validation
-    if (!mobile || mobile.length !== 10 || !/^\d{10}$/.test(mobile)) {
-      showAlert('Please enter a valid 10-digit mobile number.', 'danger');
+    const cleanMobile = mobile.replace(/\D/g, '');
+    if (!cleanMobile || cleanMobile.length !== 10) {
+      showAlert('Please select a customer from the search list or enter a valid 10-digit mobile number.', 'danger');
       mobileInput.focus();
       return;
     }

@@ -213,42 +213,60 @@ async function loadMasterData(forceRefresh = false) {
 }
 
 /**
- * Fast search customer by mobile prefix
+ * Fast search customer by mobile prefix OR customer name
  * Searches in-memory index; returns up to 20 matching customers
+ * Triggered at 3 or more characters
  */
 async function searchCustomers(query) {
   if (!query) return [];
-  const cleanQuery = String(query).replace(/\D/g, '').trim();
-  if (cleanQuery.length < 5) return [];
+  const rawQuery = String(query).trim();
+  if (rawQuery.length < 3) return [];
 
   // Ensure cache is loaded
   if (masterCustomers.length === 0 || Date.now() - lastCacheTime > config.cacheTtlMs) {
     await loadMasterData();
   }
 
-  const prefix5 = cleanQuery.substring(0, 5);
-  const candidates = prefixIndex.get(prefix5) || [];
+  const queryLower = rawQuery.toLowerCase();
+  const digitQuery = rawQuery.replace(/\D/g, '');
 
   const results = [];
   const maxResults = 20;
 
-  // Search within prefix-indexed candidates
-  for (let i = 0; i < candidates.length; i++) {
-    const cust = candidates[i];
-    if (cust.mobile.startsWith(cleanQuery)) {
-      results.push(cust);
-      if (results.length >= maxResults) break;
+  // 1. If query contains 3+ digits, search by mobile
+  if (digitQuery.length >= 3) {
+    // Check prefix index if 5+ digits
+    if (digitQuery.length >= 5) {
+      const prefix5 = digitQuery.substring(0, 5);
+      const candidates = prefixIndex.get(prefix5) || [];
+      for (let i = 0; i < candidates.length; i++) {
+        const cust = candidates[i];
+        if (cust.mobile.includes(digitQuery)) {
+          results.push(cust);
+          if (results.length >= maxResults) return results;
+        }
+      }
+    }
+
+    // Search across all customers by mobile number
+    for (let i = 0; i < masterCustomers.length; i++) {
+      const cust = masterCustomers[i];
+      if (cust.mobile && cust.mobile.includes(digitQuery)) {
+        if (!results.includes(cust)) {
+          results.push(cust);
+          if (results.length >= maxResults) return results;
+        }
+      }
     }
   }
 
-  // If candidate count is less than 20 and query might match anywhere,
-  // also check other records if prefix didn't match the start
-  if (results.length < maxResults && candidates.length === 0) {
-    for (let i = 0; i < masterCustomers.length; i++) {
-      const cust = masterCustomers[i];
-      if (cust.mobile.includes(cleanQuery)) {
+  // 2. Search by customer name
+  for (let i = 0; i < masterCustomers.length; i++) {
+    const cust = masterCustomers[i];
+    if (cust.name && cust.name.toLowerCase().includes(queryLower)) {
+      if (!results.includes(cust)) {
         results.push(cust);
-        if (results.length >= maxResults) break;
+        if (results.length >= maxResults) return results;
       }
     }
   }

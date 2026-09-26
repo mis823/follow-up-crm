@@ -33,28 +33,25 @@
 
         <form id="followupForm" novalidate autocomplete="off">
           
-          <!-- Mobile Number with Autocomplete Dropdown -->
+          <!-- Search by Mobile Number or Name -->
           <div class="mb-3 position-relative">
             <label for="mobileInput" class="form-label fw-semibold">
-              Mobile Number <span class="text-danger">*</span>
+              Search Customer (Mobile No. or Name) <span class="text-danger">*</span>
             </label>
             <div class="input-group">
-              <span class="input-group-text bg-light text-muted"><i class="bi bi-phone"></i></span>
+              <span class="input-group-text bg-light text-muted"><i class="bi bi-search"></i></span>
               <input 
-                type="tel" 
-                inputmode="numeric" 
-                pattern="[0-9]*" 
-                maxlength="10" 
+                type="text" 
                 class="form-control" 
                 id="mobileInput" 
-                placeholder="Enter 10-digit mobile number" 
+                placeholder="Type at least 3 digits or letters to search" 
                 required
               >
               <div id="searchSpinner" class="input-group-text bg-white d-none">
                 <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
               </div>
             </div>
-            <div class="form-text text-muted">Type at least 5 digits to search existing customers.</div>
+            <div class="form-text text-muted">Type at least 3 digits of mobile or customer name to see matches.</div>
             
             <!-- Suggestions Dropdown -->
             <ul id="suggestionsList" class="dropdown-menu w-100 shadow-sm custom-dropdown" style="display: none;">

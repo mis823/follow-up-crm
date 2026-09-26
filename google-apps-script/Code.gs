@@ -103,38 +103,33 @@ function handleSaveRecord(ss, payload) {
     }
   }
 
-  const newRow = lastRow + 1;
   const timeFormatted = timestamp || Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd/MM/yyyy HH:mm:ss');
 
-  // Column B: Timestamp, Column C: Mobile No., Column D: Customer Name
-  sheet.getRange(newRow, 2, 1, 3).setValues([[
-    timeFormatted,
-    mobile || '',
-    name || ''
-  ]]);
-
-  // Column F: Follow-Up Date, Column G: Rating, Column H: Remark, Column I: Any Issues, Column J: Reason, Column K: Submission ID
-  sheet.getRange(newRow, 6, 1, 6).setValues([[
-    followup || '',
-    rating || '',
-    remark || '',
-    anyIssues || 'No',
-    anyIssues === 'Yes' ? (reason || '') : '',
-    submissionId || ''
-  ]]);
-
-  // If Column A (1) and Column E (5) have row formulas, copy them down to newRow
+  // If Column A or Column E have formulas, read them once from previous row
+  let colAVal = '';
+  let colEVal = '';
   if (lastRow >= 2) {
-    const colAFormula = sheet.getRange(lastRow, 1).getFormulaR1C1();
-    if (colAFormula) {
-      sheet.getRange(newRow, 1).setFormulaR1C1(colAFormula);
-    }
-
-    const colEFormula = sheet.getRange(lastRow, 5).getFormulaR1C1();
-    if (colEFormula) {
-      sheet.getRange(newRow, 5).setFormulaR1C1(colEFormula);
-    }
+    try {
+      const formulas = sheet.getRange(lastRow, 1, 1, 5).getFormulasR1C1()[0];
+      if (formulas && formulas[0]) colAVal = formulas[0];
+      if (formulas && formulas[4]) colEVal = formulas[4];
+    } catch (e) {}
   }
+
+  // Single fast atomic appendRow
+  sheet.appendRow([
+    colAVal,        // Column A (formula)
+    timeFormatted,  // Column B: Timestamp
+    mobile || '',   // Column C: Mobile No.
+    name || '',     // Column D: Customer Name
+    colEVal,        // Column E (formula)
+    followup || '', // Column F: Follow-Up Date
+    rating || '',   // Column G: Rating
+    remark || '',   // Column H: Remark
+    anyIssues || 'No',                         // Column I: Any Issues
+    anyIssues === 'Yes' ? (reason || '') : '', // Column J: Reason
+    submissionId || ''                         // Column K: Submission ID
+  ]);
 
   return jsonResponse({
     success: true,
