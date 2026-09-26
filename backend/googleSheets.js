@@ -154,10 +154,6 @@ async function loadMasterData(forceRefresh = false) {
         lastCacheTime = Date.now();
         return [];
       }
-      rebuildIndex([]);
-      lastCacheTime = Date.now();
-      return [];
-    }
 
     // Determine column indices by matching first occurrences
     let mobileIdx = -1;
