@@ -1,0 +1,25 @@
+{
+  "name": "follow-up-crm",
+  "version": "1.0.0",
+  "description": "High-performance Follow-Up CRM web application integrated with Google Sheets API",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node backend/server.js"
+  },
+  "keywords": [
+    "crm",
+    "follow-up",
+    "google-sheets",
+    "express"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "googleapis": "^144.0.0",
+    "uuid": "^11.1.0"
+  }
+}

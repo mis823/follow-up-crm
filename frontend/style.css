@@ -1,0 +1,143 @@
+/* Follow-Up CRM Global Styles */
+body {
+  background-color: #f4f6f9;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #333;
+  min-height: 100vh;
+}
+
+.crm-card {
+  max-width: 680px;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(13, 110, 253, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  margin-top: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.crm-header {
+  background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+  padding: 1.5rem 1.75rem;
+  border-bottom: 2px solid #0a58ca;
+}
+
+/* Read-only inputs visually distinct */
+.form-control[readonly] {
+  background-color: #f1f3f5 !important;
+  color: #495057 !important;
+  border-color: #dee2e6;
+  cursor: not-allowed;
+  font-weight: 500;
+}
+
+/* Autocomplete Dropdown */
+.custom-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 1050;
+  border-radius: 8px;
+  border: 1px solid #ced4da;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  margin-top: 4px;
+}
+
+.custom-dropdown .dropdown-item {
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid #f1f3f5;
+  cursor: pointer;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.custom-dropdown .dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.custom-dropdown .dropdown-item:hover,
+.custom-dropdown .dropdown-item:focus {
+  background-color: #e7f1ff;
+  color: #0d6efd;
+}
+
+.custom-dropdown .dropdown-item .customer-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.custom-dropdown .dropdown-item .customer-mobile {
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+/* Star Rating Control */
+.star-rating-wrapper {
+  padding: 4px 0;
+}
+
+.star-icon {
+  font-size: 1.75rem;
+  color: #d1d5db;
+  cursor: pointer;
+  margin-right: 6px;
+  transition: transform 0.1s ease, color 0.15s ease;
+  user-select: none;
+}
+
+.star-icon:hover {
+  transform: scale(1.15);
+}
+
+.star-icon.active {
+  color: #f59e0b; /* Amber / Gold */
+}
+
+.star-icon.hover {
+  color: #fbbf24;
+}
+
+/* Previous Rating Stars Display */
+#previousRatingStars {
+  letter-spacing: 2px;
+}
+
+/* Custom switch alignment */
+.form-check-input:checked {
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+
+/* Button transitions */
+#submitBtn {
+  transition: all 0.2s ease-in-out;
+}
+
+#submitBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(13, 110, 253, 0.25);
+}
+
+/* Responsive adjustments */
+@media (max-width: 576px) {
+  .crm-card {
+    border-radius: 10px;
+    margin-top: 0.5rem;
+  }
+  
+  .crm-header {
+    padding: 1.25rem 1rem;
+  }
+
+  .card-body {
+    padding: 1.25rem !important;
+  }
+
+  .star-icon {
+    font-size: 1.5rem;
+    margin-right: 4px;
+  }
+}
