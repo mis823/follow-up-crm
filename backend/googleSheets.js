@@ -110,7 +110,7 @@ async function loadMasterData(forceRefresh = false) {
         console.log(`🔄 [Master Cache] Fetching Master sheet via Apps Script Webhook...`);
         const fetchUrl = `${config.appsScriptUrl}?action=getMaster&_t=${Date.now()}`;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 25000);
+        const timeout = setTimeout(() => controller.abort(), 60000);
 
         try {
           const response = await fetch(fetchUrl, { redirect: 'follow', signal: controller.signal });
